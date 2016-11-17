@@ -2,6 +2,7 @@
 #include <random>
 #include <cmath>
 #include <cfloat>
+#include <string>
 
 namespace wmc_sim {
 
@@ -22,5 +23,6 @@ private:
 
 Result invertResult(Result result);
 int pointsFromResult(Result result);
+std::string resultToString(Result result);
 
 }

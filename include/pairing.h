@@ -7,13 +7,13 @@ namespace wmc_sim {
 
 class Pairing {
 public:
-	Pairing(Team team_A, boost::optional<Team> team_B, Elo& elo);
+	Pairing(TeamPtr team_A, boost::optional<TeamPtr> team_B, Elo* elo);
 	Result getResult();
 
-	Team team_A;
-	boost::optional<Team> team_B;
+	TeamPtr team_A;
+	boost::optional<TeamPtr> team_B;
 private:
-	Elo elo_;
+	Elo* elo_;
 };
 
 }

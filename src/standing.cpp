@@ -4,7 +4,7 @@
 
 namespace wmc_sim {
 
-Standing::Standing(Team team) : team_(team), points_(0), rounds_played_(0) {}
+Standing::Standing(TeamPtr team) : team(team), points_(0), rounds_played_(0) {}
 
 int Standing::getPoints() {
 	return points_;
@@ -14,18 +14,20 @@ double Standing::getResistance() const {
 	// Based on http://www.wizards.com/dci/downloads/tiebreakers.pdf
 	double resistance = 0.0;
 	int non_byes = 0;
-	for(boost::optional<Standing*> opp : opponents_) {
+	for(boost::optional<StandingPtr> opp : opponents_) {
 		if(opp == boost::none)
 			continue;
 
-		double omw = std::min(0.33, (*opp)->points_ / (3.0 * (*opp)->rounds_played_));
+		double omw = std::max(0.33, (*opp)->points_ / (3.0 * (*opp)->rounds_played_));
 		resistance += omw;
 		++non_byes;
 	}
+	if(non_byes == 0)
+		return 0;
 	return resistance / non_byes;
 }
 
-void Standing::addResult(boost::optional<Standing*> opp, Result result) {
+void Standing::addResult(boost::optional<StandingPtr> opp, Result result) {
 	points_ += pointsFromResult(result);
 	++rounds_played_;
 	results_.push_back(result);
@@ -33,7 +35,7 @@ void Standing::addResult(boost::optional<Standing*> opp, Result result) {
 }
 
 bool operator==(const Standing& lhs, const Standing& rhs) {
-	return lhs.team_ == rhs.team_;
+	return *(lhs.team) == *(rhs.team);
 }
 
 bool operator<(const Standing& lhs, const Standing& rhs) {
@@ -45,7 +47,15 @@ bool operator<(const Standing& lhs, const Standing& rhs) {
 	double rhs_resistance = rhs.getResistance();
 	if(lhs_resistance != rhs_resistance)
 		return lhs_resistance < rhs_resistance;
-	return rhs.team_ < lhs.team_; // Yes, this is stupid, but this is the fallback in case of a tie in OMW, it puts the teams in alphabetical order
+	return *(lhs.team) < *(rhs.team); // Yes, this is stupid, but this is the fallback in case of a tie in OMW, it puts the teams in alphabetical order
+}
+
+std::ostream& operator<<(std::ostream& out, const Standing& rhs) {
+	return out << *(rhs.team) << " " << rhs.points_ << "pts OMW: " << rhs.getResistance();
+}
+
+bool compStandingPtr(const StandingPtr a, const StandingPtr b) {
+	return (*a) < (*b);
 }
 
 }

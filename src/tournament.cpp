@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <set>
+#include <utility>
 
 namespace wmc_sim {
 
@@ -21,7 +22,7 @@ Tournament::Tournament(std::vector<Team> teams, Elo* elo) : elo_(elo) {
 void Tournament::perform() {
 	//For testing: output teams
 	for(TeamPtr t : teams_) {
-		std::cout << "Team " << *t << " represent!" << std::endl;
+//		std::cout << "Team " << *t << " represent!" << std::endl;
 	}
 
 	//Three rounds swiss Sealed
@@ -30,18 +31,135 @@ void Tournament::perform() {
 		t->makeStrongestComposition();
 	}
 	performSwissPart(1,3);
-	std::cout << "Done with first part..." << std::endl;
+//	std::cout << "Done with first swiss part." << std::endl;
 
 	//Four rounds swiss Modern
 	for(TeamPtr t : teams_) {
 		t->makeStrongestComposition(t->composition[Seat::Coach]);
 	}
 	performSwissPart(4,7);
-	std::cout << "Done with the second swiss part." << std::endl;
+//	std::cout << "Done with the second swiss part." << std::endl;
+//	printStandings();
+
 	//Cut-off 48
+	for(int i = 48; i < standings_.size(); ++i) {
+		results[*(standings_[i]->team)] = FinalResult::NotTop48;
+	}
+
+	// Get back in best teamp comp
+	for(TeamPtr t : teams_) {
+		t->makeStrongestComposition();
+	}
 	//First group phase
+	// Make groups of 6;
+	std::vector<SeededGroup> groups6;
+	for(int i = 0; i < 8; ++i) {
+		SeededGroup group;
+		group.push_back(SeededTeam(0, standings_[     i]->team));
+		group.push_back(SeededTeam(1, standings_[15 - i]->team));
+		group.push_back(SeededTeam(2, standings_[16 + i]->team));
+		group.push_back(SeededTeam(3, standings_[31 - i]->team));
+		group.push_back(SeededTeam(4, standings_[32 + i]->team));
+		group.push_back(SeededTeam(5, standings_[47 - i]->team));
+		groups6.push_back(group);
+	}
+	std::vector<SeededGroup> groups4;
+	for(auto group : groups6) {
+		std::vector<Pairing> group_pairing;
+		SeededGroup group4;
+
+		Pairing p0{group[0].second, boost::none, elo_};
+		playPairing(p0);
+		group4.push_back(group[0]);
+
+		Pairing p1{group[1].second, boost::none, elo_};
+		playPairing(p1);
+		group4.push_back(group[1]);
+
+		Pairing p2{group[2].second, group[5].second, elo_};
+		Result res2 = playPairing(p2);
+		SeededTeam winner2 = res2 == Result::Win ? group[2] : group[5];
+		SeededTeam loser2  = res2 == Result::Win ? group[5] : group[2];
+		results[(*loser2.second)] = FinalResult::Top48;
+		group4.push_back(winner2);
+
+		Pairing p3{group[3].second, group[4].second, elo_};
+		Result res3 = playPairing(p3);
+		SeededTeam winner3 = res3 == Result::Win ? group[3] : group[4];
+		SeededTeam loser3  = res3 == Result::Win ? group[4] : group[3];
+		results[(*loser3.second)] = FinalResult::Top48;
+		group4.push_back(winner3);
+
+		std::sort(group4.begin(), group4.end());
+		groups4.push_back(group4);
+	}
+	std::vector<Team> top16;
+	performGroupPhase(groups4, top16, FinalResult::Top32);
+	sortStandings();
+
 	//Second Group phase
+	for(TeamPtr t : teams_) {
+		t->makeStrongestComposition(t->composition[Seat::Coach]);
+	}
+	std::vector<StandingPtr> top16_standings;
+	for(Team t : top16) {
+		top16_standings.push_back(team_results_[t]);
+	}
+	std::sort(top16_standings.begin(), top16_standings.end());
+	std::reverse(top16_standings.begin(), top16_standings.end());
+
+	groups4.clear();
+	for(int i = 0; i < 4; ++i) {
+		SeededGroup group;
+		group.push_back(SeededTeam(0, top16_standings[     i]->team));
+		group.push_back(SeededTeam(1, top16_standings[7  - i]->team));
+		group.push_back(SeededTeam(2, top16_standings[8  + i]->team));
+		group.push_back(SeededTeam(3, top16_standings[15 - i]->team));
+		groups4.push_back(group);
+	}
+	std::vector<Team> top8;
+	performGroupPhase(groups4, top8, FinalResult::Top16);
+	sortStandings();
+
 	//top 8
+	for(TeamPtr t : teams_) {
+		t->makeStrongestComposition();
+	}
+	std::vector<StandingPtr> top8_standings;
+	for(Team t : top8) {
+		top8_standings.push_back(team_results_[t]);
+	}
+	std::sort(top8_standings.begin(), top8_standings.end());
+	std::reverse(top8_standings.begin(), top8_standings.end());
+
+	std::vector<TeamPtr> top4;
+	for(int i = 0; i < 4; ++i) {
+		Pairing q{top8_standings[i]->team, top8_standings[7-i]->team, elo_};
+		Result res = playPairing(q);
+		TeamPtr winner = res == Result::Win ? top8_standings[i]->team : top8_standings[7-i]->team;
+		TeamPtr loser  = res == Result::Win ? top8_standings[7-i]->team : top8_standings[i]->team;
+		results[*loser] = FinalResult::Top8;
+		top4.push_back(winner);
+	}
+
+	std::vector<TeamPtr> finals;
+	for(int i = 0; i < 2; ++i) {
+		Pairing s{top4[i], top4[3-i], elo_};
+		Result res = playPairing(s);
+		TeamPtr winner = res == Result::Win ? top4[i] : top4[3-i];
+		TeamPtr loser  = res == Result::Win ? top4[3-i] : top4[i];
+		results[*loser] = FinalResult::Top4;
+		finals.push_back(winner);
+	}
+
+	Pairing f{finals[0], finals[1], elo_};
+	Result res = playPairing(f);
+	TeamPtr winner = res == Result::Win ? finals[0] : finals[1];
+	TeamPtr loser  = res == Result::Win ? finals[1] : finals[0];
+	results[*winner] = FinalResult::First;
+	results[*loser]  = FinalResult::Second;
+
+//	printResults();
 }
 
 void Tournament::sortStandings() {
@@ -169,41 +287,113 @@ void Tournament::performSwissPart(int start_round, int end_round) {
 	for(int round = start_round; round <= end_round; ++round) {
 		pairings.clear();
 		makePairings(pairings, 1, round);
-		std::cout << "=== Pairings round " << round << std::endl;
+//		std::cout << "=== Pairings round " << round << std::endl;
 		std::map<Team, boost::optional<TeamPtr>> paired_against;
 		for(Pairing p : pairings) {
-			Result result = p.getResult();
-
 			paired_against[*(p.team_A)] = p.team_B;
-			int points_before_round_A, points_before_round_B;
-			StandingPtr standing_A = team_results_[*(p.team_A)];
-			points_before_round_A = standing_A->getPoints();
-			StandingPtr standing_B;
 			if(p.team_B != boost::none) {
 				paired_against[**(p.team_B)] = p.team_A;
-				standing_B = team_results_[**(p.team_B)];
-				points_before_round_B = standing_B->getPoints();
-				standing_B->addResult(standing_A, invertResult(result));
-				standing_A->addResult(standing_B, result);
 			}
-			else {
-				standing_A->addResult(boost::none, result);
-			}
-
-			std::cout << *(p.team_A) << "(" << points_before_round_A << ") vs ";
-			if(p.team_B != boost::none) {
-				std::cout << **(p.team_B) << "(" << points_before_round_B << ")";
-			} else {
-				std::cout << "BYE";
-			}
-			std::cout << " ===== " << resultToString(result) << std::endl;
+			Result result = playPairing(p);
 		}
 
 		opponents_per_round_.push_back(paired_against);
 		sortStandings();
-		std::cout << "Round " << round << " in the books!" << std::endl;
-		printStandings();
+//		std::cout << "Round " << round << " in the books!" << std::endl;
+//		printStandings();
 	}
+}
+
+Result Tournament::playPairing(Pairing& pairing) {
+	Result result = pairing.getResult();
+
+	StandingPtr standing_A = team_results_[*(pairing.team_A)];
+	StandingPtr standing_B;
+	if(pairing.team_B != boost::none) {
+		standing_B = team_results_[**(pairing.team_B)];
+		standing_B->addResult(standing_A, invertResult(result));
+		standing_A->addResult(standing_B, result);
+	}
+	else {
+		standing_A->addResult(boost::none, result);
+	}
+
+	return result;
+}
+
+void Tournament::printResults() {
+	int i = 0;
+	std::cout << "=== Printing all results" << std::endl;
+	std::map<FinalResult, int> sanity_check;
+	for(int i = 0; i <= int(FinalResult::NotTop48); ++i) {
+		sanity_check[FinalResult(i)] = 0;
+	}
+	for(auto iterator = results.begin(); iterator!= results.end(); iterator++) {
+		std::cout << ++i << ". Team " << iterator->first << " got " << finalResultToString(iterator->second) << std::endl;
+		sanity_check[iterator->second] += 1;
+	}
+	std::cout << "Printing sanity check:" << std::endl;
+	for(int i = 0; i <= int(FinalResult::NotTop48); ++i) {
+		std::cout << sanity_check[FinalResult(i)] << " finished with result " << finalResultToString(FinalResult(i)) << std::endl;
+	}
+}
+
+void Tournament::performGroupPhase(std::vector<SeededGroup>& groups4, std::vector<Team>& topX, FinalResult elim_res) {
+	for(SeededGroup& group : groups4) {
+		Pairing p0{group[0].second, group[3].second, elo_};
+		Result res0 = playPairing(p0);
+		SeededTeam winner0 = res0 == Result::Win ? group[0] : group[3];
+		SeededTeam loser0  = res0 == Result::Win ? group[3] : group[0];
+
+		Pairing p1{group[1].second, group[2].second, elo_};
+		Result res1 = playPairing(p1);
+		SeededTeam winner1 = res1 == Result::Win ? group[1] : group[2];
+		SeededTeam loser1  = res1 == Result::Win ? group[2] : group[1];
+
+		Pairing p2{winner0.second, winner1.second, elo_};
+		Result res2 = playPairing(p2);
+		SeededTeam winner2 = res2 == Result::Win ? winner0 : winner1;
+		SeededTeam loser2  = res2 == Result::Win ? winner1 : winner0;
+
+		Pairing p3{loser0.second, loser1.second, elo_};
+		Result res3 = playPairing(p3);
+		SeededTeam winner3 = res3 == Result::Win ? loser0 : loser1;
+		SeededTeam loser3  = res3 == Result::Win ? loser1 : loser0;
+		results[*(loser3.second)] = elim_res;
+
+		Pairing p4{winner2.second, boost::none, elo_};
+		playPairing(p4);
+		topX.push_back(*(winner2.second));
+
+		Pairing p5{loser2.second, winner3.second, elo_};
+		Result res5 = playPairing(p5);
+		SeededTeam winner5 = res5 == Result::Win ? loser2  : winner3;
+		SeededTeam loser5  = res5 == Result::Win ? winner3 : loser2;
+		topX.push_back(*(winner5.second));
+		results[*(loser5.second)] = elim_res;
+	}
+}
+
+std::string finalResultToString(FinalResult result) {
+	switch(result) {
+		case FinalResult::First:
+			return "FIRST";
+		case FinalResult::Second:
+			return "SECOND";
+		case FinalResult::Top4:
+			return "Top4";
+		case FinalResult::Top8:
+			return "Top8";
+		case FinalResult::Top16:
+			return "Top16";
+		case FinalResult::Top32:
+			return "Top32";
+		case FinalResult::Top48:
+			return "Top48";
+		default:
+			return "NotTop48";
+	}
+	return "NotTop48";
 }
 
 }

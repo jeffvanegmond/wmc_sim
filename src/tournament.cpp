@@ -105,7 +105,7 @@ void Tournament::perform() {
 	for(Team t : top16) {
 		top16_standings.push_back(team_results_[t]);
 	}
-	std::sort(top16_standings.begin(), top16_standings.end());
+	std::sort(top16_standings.begin(), top16_standings.end(), compStandingPtr);
 	std::reverse(top16_standings.begin(), top16_standings.end());
 
 	groups4.clear();
@@ -129,7 +129,7 @@ void Tournament::perform() {
 	for(Team t : top8) {
 		top8_standings.push_back(team_results_[t]);
 	}
-	std::sort(top8_standings.begin(), top8_standings.end());
+	std::sort(top8_standings.begin(), top8_standings.end(), compStandingPtr);
 	std::reverse(top8_standings.begin(), top8_standings.end());
 
 	std::vector<TeamPtr> top4;
